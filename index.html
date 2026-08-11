@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>抹黑貼文異常互動鑑識報告</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700;900&family=JetBrains+Mono:wght@500;700&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#080b13;
+    --bg-grid:#0d1220;
+    --panel:#111827;
+    --panel-2:#0d1420;
+    --line:#1e2738;
+    --text:#f2f5f9;
+    --text-dim:#8b98ad;
+    --text-faint:#5c6b82;
+
+    --cyan:#00f0ff;
+    --cyan-dim:rgba(0,240,255,.14);
+    --orange:#ff9d1f;
+    --orange-dim:rgba(255,157,31,.14);
+    --magenta:#ff2a6d;
+    --magenta-dim:rgba(255,42,109,.14);
+    --gold:#ffd23f;
+    --gold-dim:rgba(255,210,63,.14);
+    --green:#69e147;
+    --green-dim:rgba(105,225,71,.14);
+
+    --violet:#a855f7;
+    --mint:#2dd4bf;
+    --slate:#64748b;
+
+    --disp:'Space Grotesk',sans-serif;
+    --mono:'JetBrains Mono',monospace;
+    --sans:'Noto Sans TC','Space Grotesk',sans-serif;
+  }
+
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+
+  body{
+    margin:0;
+    padding:28px 20px 60px;
+    background:
+      radial-gradient(1200px 500px at 15% -10%, rgba(0,240,255,.06), transparent 60%),
+      radial-gradient(1000px 600px at 100% 0%, rgba(255,42,109,.05), transparent 55%),
+      var(--bg);
+    color:var(--text);
+    font-family:var(--sans);
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+    -moz-osx-font-smoothing:grayscale;
+  }
+
+  .dashboard{width:100%;max-width:1240px;display:flex;flex-direction:column;gap:22px;}
+
+  /* ---------- Header ---------- */
+  .header{
+    position:relative;
+    background:linear-gradient(180deg, var(--panel), var(--panel-2));
+    border:1px solid var(--line);
+    border-radius:16px;
+    padding:30px 28px 26px;
+    overflow:hidden;
+  }
+  .header::before{
+    content:'';
+    position:absolute; inset:0 0 auto 0; height:2px;
+    background:linear-gradient(90deg, transparent, var(--magenta), transparent);
+  }
+  .header::after{
+    content:'';
+    position:absolute; top:0; left:-40%; width:35%; height:2px;
+    background:linear-gradient(90deg, transparent, #ff5c8f, transparent);
+    filter:blur(1px);
+    animation:scan 5.5s ease-in-out infinite;
+  }
+  @keyframes scan{
+    0%{left:-40%;}
+    50%{left:105%;}
+    100%{left:105%;}
+  }
+  @media (prefers-reduced-motion: reduce){ .header::after{animation:none;display:none;} }
+
+  .eyebrow{
+    font-family:var(--mono); font-size:12px; letter-spacing:.18em; font-weight:700;
+    color:var(--cyan); text-transform:uppercase; margin:0 0 10px;
+    display:flex; align-items:center; gap:8px;
+  }
+  .eyebrow .dot{width:6px;height:6px;border-radius:50%;background:var(--magenta);box-shadow:0 0 10px var(--magenta);animation:blink 1.6s ease-in-out infinite;}
+  @keyframes blink{0%,100%{opacity:1;}50%{opacity:.25;}}
+
+  .header h1{
+    font-family:var(--sans); font-weight:900; font-size:clamp(26px,3.4vw,38px);
+    margin:0 0 12px; letter-spacing:.01em; line-height:1.25;
+    background:linear-gradient(90deg,#ffffff 40%,#c9e9ff 100%);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  .header-meta{display:flex; flex-wrap:wrap; gap:10px 22px; font-size:13px; color:var(--text-dim);}
+  .header-meta b{color:var(--text); font-weight:700;}
+  .header-meta span{display:flex; align-items:center; gap:6px; font-family:var(--mono);}
+
+  /* ---------- KPI grid ---------- */
+  .kpi-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(215px,1fr)); gap:16px;}
+
+  .kpi-card{
+    position:relative; overflow:hidden;
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:22px 20px;
+    text-align:left;
+    cursor:default;
+    transition:transform .32s cubic-bezier(.2,.8,.2,1), box-shadow .32s ease, border-color .32s ease, background .32s ease;
+  }
+  .kpi-card::before{
+    content:''; position:absolute; top:0; left:-160%; width:55%; height:100%;
+    background:linear-gradient(115deg, transparent, rgba(255,255,255,.16), transparent);
+    transform:skewX(-18deg);
+    transition:left .65s ease;
+    pointer-events:none;
+  }
+  .kpi-card:hover::before{left:160%;}
+  .kpi-card:hover{transform:translateY(-7px) scale(1.025);}
+
+  .kpi-top{display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;}
+  .kpi-title{color:var(--text-dim); font-size:13.5px; font-weight:700; letter-spacing:.02em; transition:color .3s ease;}
+  .kpi-flag{font-family:var(--mono); font-size:10px; font-weight:700; letter-spacing:.05em; padding:3px 7px; border-radius:5px; color:#0a0e17;}
+
+  .kpi-value{font-family:var(--disp); font-weight:900; font-size:46px; line-height:1; margin-bottom:10px; letter-spacing:-.01em; font-variant-numeric:tabular-nums;}
+  .kpi-sub{font-size:12.5px; color:var(--text-dim); line-height:1.5;}
+
+  .card-cyan{border-bottom:3px solid var(--cyan);}
+  .card-cyan .kpi-value{color:var(--cyan); text-shadow:0 0 18px rgba(0,240,255,.35);}
+  .card-cyan .kpi-flag{background:var(--cyan);}
+  .card-cyan:hover{border-color:var(--cyan); box-shadow:0 0 0 1px rgba(0,240,255,.25), 0 26px 50px -20px rgba(0,240,255,.45), 0 0 40px rgba(0,240,255,.12) inset;}
+  .card-cyan:hover .kpi-title{color:var(--cyan);}
+
+  .card-orange{border-bottom:3px solid var(--orange);}
+  .card-orange .kpi-value{color:var(--orange); text-shadow:0 0 18px rgba(255,157,31,.35);}
+  .card-orange .kpi-flag{background:var(--orange);}
+  .card-orange:hover{border-color:var(--orange); box-shadow:0 0 0 1px rgba(255,157,31,.25), 0 26px 50px -20px rgba(255,157,31,.45), 0 0 40px rgba(255,157,31,.12) inset;}
+  .card-orange:hover .kpi-title{color:var(--orange);}
+
+  .card-magenta{border-bottom:3px solid var(--magenta);}
+  .card-magenta .kpi-value{color:var(--magenta); text-shadow:0 0 18px rgba(255,42,109,.35);}
+  .card-magenta .kpi-flag{background:var(--magenta);}
+  .card-magenta:hover{border-color:var(--magenta); box-shadow:0 0 0 1px rgba(255,42,109,.25), 0 26px 50px -20px rgba(255,42,109,.45), 0 0 40px rgba(255,42,109,.12) inset;}
+  .card-magenta:hover .kpi-title{color:var(--magenta);}
+
+  .card-gold{border-bottom:3px solid var(--gold);}
+  .card-gold .kpi-value{color:var(--gold); text-shadow:0 0 18px rgba(255,210,63,.4);}
+  .card-gold .kpi-flag{background:var(--gold);}
+  .card-gold:hover{border-color:var(--gold); box-shadow:0 0 0 1px rgba(255,210,63,.3), 0 26px 50px -20px rgba(255,210,63,.5), 0 0 40px rgba(255,210,63,.14) inset;}
+  .card-gold:hover .kpi-title{color:var(--gold);}
+
+  .card-green{border-bottom:3px solid var(--green);}
+  .card-green .kpi-value{color:var(--green); text-shadow:0 0 18px rgba(105,225,71,.4);}
+  .card-green .kpi-flag{background:var(--green); color:#0a0e17;}
+  .card-green:hover{border-color:var(--green); box-shadow:0 0 0 1px rgba(105,225,71,.3), 0 26px 50px -20px rgba(105,225,71,.5), 0 0 40px rgba(105,225,71,.14) inset;}
+  .card-green:hover .kpi-title{color:var(--green);}
+
+  /* ---------- Panels / Charts ---------- */
+  .panel{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:16px;
+    padding:24px 24px 20px;
+    transition:border-color .3s ease, box-shadow .3s ease;
+  }
+  .panel:hover{border-color:#2a3550; box-shadow:0 20px 50px -30px rgba(0,240,255,.25);}
+
+  .row-2{display:grid; grid-template-columns:repeat(auto-fit,minmax(420px,1fr)); gap:18px;}
+
+  .panel-head{display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:6px; flex-wrap:wrap;}
+  .panel-title{font-size:17px; font-weight:900; color:var(--text); border-left:3px solid var(--cyan); padding-left:10px; letter-spacing:.01em;}
+  .panel-caption{font-family:var(--mono); font-size:13px; font-weight:600; color:var(--text-dim); padding-left:13px; letter-spacing:.01em;}
+
+  .chart-wrap{position:relative; height:330px; width:100%; margin-top:10px;}
+  .chart-wrap.tall{height:380px;}
+
+  .legal-note{
+    margin-top:14px; font-size:13.5px; font-weight:500; color:#a8b4c6; line-height:1.75;
+    border-top:1px dashed var(--line); padding-top:12px;
+  }
+  .legal-note b{color:#ffffff; font-weight:800;}
+
+  .footer-note{
+    background:var(--panel-2);
+    padding:16px 18px;
+    border-radius:10px;
+    font-size:14px; line-height:1.75;
+    color:#cbd5e1;
+    margin-top:16px;
+    border-left:3px solid var(--magenta);
+    transition:border-color .3s ease, background .3s ease, transform .3s ease;
+  }
+  .footer-note:hover{border-left-color:var(--gold); background:#101828; transform:translateX(3px);}
+  .footer-note .hl{color:var(--cyan); font-weight:700;}
+  .footer-note .hl2{color:var(--gold); font-weight:700;}
+
+  .method-note{
+    font-size:13.5px; font-weight:600; color:#a8b4c6; line-height:1.75; margin-top:10px;
+    font-family:var(--mono); letter-spacing:.01em;
+  }
+
+  /* ---------- Fingerprint track (version ↔ .2025 account correlation) ---------- */
+  .fingerprint-block{margin-top:26px; padding-top:22px; border-top:1px solid var(--line);}
+  .fingerprint-head{display:flex; align-items:center; gap:8px; margin-bottom:4px;}
+  .fingerprint-head .dot-pulse{width:8px;height:8px;border-radius:50%;background:var(--gold);box-shadow:0 0 10px var(--gold);animation:blink 1.6s ease-in-out infinite;}
+  .fingerprint-title{font-size:15.5px; font-weight:900; color:#fff;}
+  .fingerprint-sub{font-size:13px; color:var(--text-dim); margin:4px 0 44px; line-height:1.6;}
+  .fingerprint-sub b{color:var(--gold);}
+
+  .fp-track{
+    position:relative;
+    display:flex; justify-content:space-between; align-items:flex-end;
+    padding:0 4px 30px;
+    margin-bottom:6px;
+  }
+  .fp-track::before{
+    content:''; position:absolute; left:14px; right:14px; top:8px; height:2px;
+    background:linear-gradient(90deg, transparent, #2a3550 6%, #2a3550 94%, transparent);
+  }
+  .fp-node{
+    position:relative; flex:1; display:flex; flex-direction:column; align-items:center;
+    min-width:44px;
+  }
+  .fp-dot{
+    width:14px; height:14px; border-radius:50%; background:#1a2436; border:2px solid #2a3550;
+    transition:transform .3s ease, box-shadow .3s ease, background .3s ease;
+    cursor:default; z-index:1;
+  }
+  .fp-node.hit .fp-dot{background:var(--gold); border-color:#fff8e0; box-shadow:0 0 12px rgba(255,210,63,.65);}
+  .fp-node.double .fp-dot{width:19px; height:19px; box-shadow:0 0 20px rgba(255,210,63,.9);}
+  .fp-node:hover .fp-dot{transform:scale(1.45);}
+  .fp-node.hit:hover .fp-dot{box-shadow:0 0 26px rgba(255,210,63,1);}
+
+  .fp-names{
+    position:absolute; bottom:calc(100% + 8px); left:50%; transform:translateX(-50%);
+    font-family:var(--mono); font-weight:700; font-size:10.5px; color:var(--gold);
+    white-space:nowrap; text-align:center; line-height:1.6;
+    transition:transform .3s ease, color .3s ease;
+  }
+  .fp-node.hit:hover .fp-names{transform:translateX(-50%) translateY(-3px); color:#fff;}
+  .fp-names .miss{color:var(--text-faint); font-weight:500;}
+
+  .fp-meta{
+    margin-top:10px; text-align:center; white-space:nowrap;
+  }
+  .fp-time{font-family:var(--mono); font-size:10px; color:var(--text-faint);}
+  .fp-val{font-family:var(--disp); font-size:12px; font-weight:800; color:#c9d3e0; margin-top:1px;}
+  .fp-node.hit .fp-val{color:var(--gold);}
+
+  .fp-legend{
+    display:flex; flex-wrap:wrap; gap:18px; font-size:11.5px; color:var(--text-dim);
+    margin-top:6px;
+  }
+  .fp-legend span{display:inline-flex; align-items:center; gap:6px;}
+  .fp-swatch{width:10px;height:10px;border-radius:50%; display:inline-block;}
+
+  ::selection{background:rgba(0,240,255,.3);}
+</style>
+</head>
+<body>
+
+<div class="dashboard">
+
+  <!-- Header -->
+  <div class="header">
+    <p class="eyebrow"><span class="dot"></span>ANOMALY INTERACTION FORENSICS</p>
+    <h1>抹黑貼文異常互動鑑識報告</h1>
+    <div class="header-meta">
+      <span>🎯標的：社團管理員「公審文」互動紀錄 ｜   </span>
+      <span> 🎯樣本數：184 則互動反應  </span>
+    </div>
+  </div>
+
+  <!-- KPI grid -->
+  <div class="kpi-grid">
+
+    <div class="kpi-card card-cyan">
+      <div class="kpi-top"><div class="kpi-title">總互動反應數</div><div class="kpi-flag">ALL</div></div>
+      <div class="kpi-value" data-count="184">0</div>
+      <div class="kpi-sub">讚 167・哈 16・加油 1（12次版本編輯中，9個時間點可獨立追蹤）</div>
+    </div>
+
+    <div class="kpi-card card-magenta">
+      <div class="kpi-top"><div class="kpi-title">90%up大陸拼音</div><div class="kpi-flag">ID PATTERN</div></div>
+      <div class="kpi-value" data-count="40">0</div>
+      <div class="kpi-sub">帳號命名風格比對結果，非國籍或身分判定</div>
+    </div>
+
+    <div class="kpi-card card-orange">
+      <div class="kpi-top"><div class="kpi-title">非社團成員互動</div><div class="kpi-flag">NON-MEMBER</div></div>
+      <div class="kpi-value" data-count="39">0</div>
+      <div class="kpi-sub">未加入社團仍直接互動・互動值 100% 為 0，與身分吻合</div>
+    </div>
+
+    <div class="kpi-card card-green">
+      <div class="kpi-top"><div class="kpi-title">兩波集中空降湧入</div><div class="kpi-flag">SURGE</div></div>
+      <div class="kpi-value" data-count="93">0</div>
+      <div class="kpi-sub">佔總互動數 <b style="color:#fff">50.5%</b>，集中於2個時間點</div>
+    </div>
+
+  </div>
+
+  <!-- Doughnut charts -->
+  <div class="row-2">
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">互動帳號真實性解構</div>
+      </div>
+      <div class="panel-caption">N = 184・分類互斥，加總為總互動數</div>
+      <div class="chart-wrap"><canvas id="chartAuthenticity"></canvas></div>
+      <div class="legal-note">
+        <b>備註：</b>為避免重複計算，9個「同時符合大陸拼音與非社團成員」特徵的帳號，已單獨計入「大陸拼音特徵」區塊中。「大陸拼音特徵」僅代表帳號命名風格比對結果，<b>不代表帳號持有人之國籍、所在地或身分</b>。<br>
+        加入社團成員依「社團互動值（點數）」逐一截圖驗證後分三級：0–9點（含空白視為0）／10–349點／≥600點。<b style="color:#fff">交叉驗證：</b>30位非社團成員互動值 100% 為 0；40位大陸拼音特徵帳號中也有 28 位（70%）落在 0–9 點區間。
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">帳號命名特徵分類</div>
+      </div>
+      <div class="panel-caption">N = 184（與左圖總互動數對齊，含匿名參與者與未公開用戶名帳號）</div>
+      <div class="chart-wrap"><canvas id="chartNaming"></canvas></div>
+      <div class="legal-note">
+        <b>判定口徑：</b>姓名拼音＝可拆解為中文姓名拼音、台灣舊式拼法或粵語人名羅馬字；英文名＝含可辨識英文／外語人名；無意義字串＝隨機字母數字或品牌式字串，無法穩定辨識為人名。<br>
+        85位姓名拼音中，<b style="color:#fff">40位</b>經覆核符合90%up大陸拼音（與左圖同一批帳號），以同色系深紫標示；其餘45位維持原色。<br>
+        另有20個帳號因無可比對之用戶名稱，無法納入命名特徵分類，獨立列出：<b style="color:#fff">匿名參與者</b>10位（無法開啟個人檔案）、<b style="color:#fff">未公開用戶名帳號</b>10位（僅有數字ID連結，未設定自訂用戶名）。
+      </div>
+    </div>
+  </div>
+
+  <!-- Timeline -->
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-title">貼文互動生命週期：異常湧入時間點鑑識</div>
+    </div>
+    <div class="panel-caption">每根柱狀對應一次貼文版本編輯後的獨立心情數（9 / 12 個版本可獨立計數）</div>
+    <div class="chart-wrap tall"><canvas id="chartTimeline"></canvas></div>
+
+    <div class="footer-note">
+      🔥 <span class="hl">數據結論：</span>一般貼文互動會隨時間遞減，但此貼文於 <b>7/26 凌晨 01:13</b> 與 <b>7/26 下午 13:11</b> 分別出現 <span class="hl2">47</span> 則與 <span class="hl2">46</span> 則新增反應，兩波合計 93 則、占全部 184 則互動的 <b>50.5%</b>，且高度重疊「非社團成員」與「大陸拼音命名」帳號，現有數據強烈指向存在「非自然流量灌入」之操作痕跡。
+    </div>
+    <div class="method-note">
+      // 另有 3 次版本編輯（7/25 22:42 → 22:42、7/26 13:11 → 13:11、7/28 10:08 → 10:09）因間隔過短，系統未提供獨立心情計數，其反應已併入下一版本統計，故本圖僅呈現 9 個可獨立計數的時間點。
+    </div>
+
+    <div class="fingerprint-block">
+      <div class="fingerprint-head"><span class="dot-pulse"></span><div class="fingerprint-title">帳號追蹤指紋：同一批「2025」帳號，逐版準時報到</div></div>
+      <div class="fingerprint-sub">
+        164個可辨識用戶名帳號中，26個結尾為4碼數字；其中 <b>9個</b> 結尾同為「2025」，其餘17個彼此互不重複——四碼數字有一萬種排列組合，9個帳號撞在同一組尾碼，機率低到不像巧合。<br>
+        比對逐版本反應名單：9個「2025」帳號，剛好卡進9個可追蹤版本中的7個；<b>唯二出現「雙重報到」的版本，正是前述兩波異常空降（01:13／13:11）</b>。
+      </div>
+
+      <div class="fp-track">
+        <div class="fp-node hit">
+          <div class="fp-names">Solan KJ</div>
+          <div class="fp-dot"></div>
+          <div class="fp-meta"><div class="fp-time">7/25 22:06</div><div class="fp-val">35</div></div>
+        </div>
+        <div class="fp-node hit">
+          <div class="fp-names">宋凱麗</div>
+          <div class="fp-dot"></div>
+          <div class="fp-meta"><div class="fp-time">7/25 22:23</div><div class="fp-val">13</div></div>
+        </div>
+        <div class="fp-node hit">
+          <div class="fp-names">Milly Lung</div>
+          <div class="fp-dot"></div>
+          <div class="fp-meta"><div class="fp-time">7/25 22:42</div><div class="fp-val">17</div></div>
+        </div>
+        <div class="fp-node hit">
+          <div class="fp-names">謝都</div>
+          <div class="fp-dot"></div>
+          <div class="fp-meta"><div class="fp-time">7/25 23:08</div><div class="fp-val">15</div></div>
+        </div>
+        <div class="fp-node hit">
+          <div class="fp-names">資立廷</div>
+          <div class="fp-dot"></div>
+          <div class="fp-meta"><div class="fp-time">7/26 00:00</div><div class="fp-val">6</div></div>
+        </div>
+        <div class="fp-node hit double">
+          <div class="fp-names">呂紹麟<br>Inan Wong</div>
+          <div class="fp-dot"></div>
+          <div class="fp-meta"><div class="fp-time">7/26 01:13</div><div class="fp-val">47</div></div>
+        </div>
+        <div class="fp-node hit double">
+          <div class="fp-names">姚秀佳<br>何も知らない</div>
+          <div class="fp-dot"></div>
+          <div class="fp-meta"><div class="fp-time">7/26 13:11</div><div class="fp-val">46</div></div>
+        </div>
+        <div class="fp-node">
+          <div class="fp-names miss">—</div>
+          <div class="fp-dot"></div>
+          <div class="fp-meta"><div class="fp-time">7/27 21:21</div><div class="fp-val">3</div></div>
+        </div>
+        <div class="fp-node">
+          <div class="fp-names miss">—</div>
+          <div class="fp-dot"></div>
+          <div class="fp-meta"><div class="fp-time">7/28 10:09</div><div class="fp-val">2</div></div>
+        </div>
+      </div>
+
+      <div class="fp-legend">
+        <span><span class="fp-swatch" style="background:var(--gold);box-shadow:0 0 8px var(--gold);"></span>該版本命中「2025」帳號</span>
+        <span><span class="fp-swatch" style="background:#1a2436;border:1px solid #2a3550;"></span>該版本無命中</span>
+        <span>● 較大金點＝同一版本雙重命中（與異常空降版本完全重疊）</span>
+      </div>
+
+      <div class="legal-note">
+        <b>備註：</b>這9個帳號的社團互動值差異很大（0點到273點都有），不是單純的臨時洗版小號，比較像是同一批於相近時間申請、之後各自發展的帳號。版主本人FB個人檔案設為不公開，無法直接查證好友關係，此處僅呈現可獨立驗證的「版本-帳號」對應紀錄。
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+Chart.register(ChartDataLabels);
+
+Chart.register({
+  id:'centerText',
+  afterDraw(chart, args, opts){
+    if(!opts || !opts.enabled) return;
+    const {ctx, chartArea:{width,height,left,top}} = chart;
+    const active = chart.getActiveElements();
+    let label, value, color;
+    if(active && active.length){
+      const idx = active[0].index;
+      label = chart.data.labels[idx];
+      if(Array.isArray(label)) label = label.join(' ');
+      value = chart.data.datasets[0].data[idx];
+      color = chart.data.datasets[0].backgroundColor[idx];
+    } else {
+      label = opts.label || '總計';
+      value = chart.data.datasets[0].data.reduce((a,b)=>a+b,0);
+      color = '#ffffff';
+    }
+    ctx.save();
+    ctx.textAlign='center';
+    ctx.textBaseline='middle';
+    ctx.fillStyle = color;
+    ctx.font = "900 36px 'Space Grotesk', sans-serif";
+    ctx.fillText(value, left+width/2, top+height/2 - 12);
+    ctx.fillStyle = '#8b98ad';
+    ctx.font = "700 12.5px 'Noto Sans TC', sans-serif";
+    ctx.fillText(label, left+width/2, top+height/2 + 16);
+    ctx.restore();
+  }
+});
+
+Chart.defaults.color = '#8b98ad';
+Chart.defaults.font.family = "'Noto Sans TC','Space Grotesk',sans-serif";
+Chart.defaults.devicePixelRatio = 3; // render canvases at 3x pixel density so charts stay sharp when zoomed/cropped in video editing
+
+const tooltipBase = {
+  backgroundColor:'#0d1420',
+  titleColor:'#ffffff',
+  bodyColor:'#c9d3e0',
+  borderColor:'#2a3550',
+  borderWidth:1,
+  padding:12,
+  cornerRadius:8,
+  titleFont:{family:"'Space Grotesk',sans-serif",weight:700,size:13},
+  bodyFont:{family:"'Noto Sans TC',sans-serif",size:12.5},
+  displayColors:true,
+  boxPadding:4
+};
+
+/* 1. Authenticity doughnut — mutually exclusive, sums to 184
+      加入社團成員依社團互動值(點數)逐一截圖驗證，分三級：0-9 / 10-349 / >=350 */
+new Chart(document.getElementById('chartAuthenticity'), {
+  type:'doughnut',
+  data:{
+    labels:['加入社團成員（≥600點）','加入社團成員（10-349點）','加入社團成員（0-9點，已截圖驗證）','非社團成員(不含拼音重複)','90%up大陸拼音'],
+    datasets:[{
+      data:[6, 42, 66, 30, 40],
+      backgroundColor:['#00f0ff','#149bb3','#0a3f47','#ff9d1f','#ff2a6d'],
+      hoverBackgroundColor:['#5df8ff','#3fc4dc','#12626e','#ffb95c','#ff5c8f'],
+      borderWidth:2,
+      borderColor:'#111827',
+      hoverBorderColor:'#ffffff',
+      hoverBorderWidth:3,
+      hoverOffset:16
+    }]
+  },
+  options:{
+    responsive:true, maintainAspectRatio:false, cutout:'68%',
+    interaction:{mode:'nearest', intersect:true},
+    onHover:(e)=>{ e.native.target.style.cursor='pointer'; },
+    plugins:{
+      centerText:{enabled:true, label:'總互動數'},
+      legend:{position:'bottom', labels:{color:'#ffffff', padding:12, font:{size:11,weight:600}, boxWidth:12, boxHeight:12}},
+      tooltip:{...tooltipBase, callbacks:{label:(ctx)=> ' '+ctx.label+'：'+ctx.parsed+' 人'}},
+      datalabels:{color:['#0a0e17','#0a0e17','#ffffff','#0a0e17','#0a0e17'], font:{weight:900,size:13}, formatter:(v)=> v>=5 ? v : ''}
+    }
+  }
+});
+
+/* 2. Naming pattern doughnut — 姓名拼音(85) 再拆出90%up大陸拼音(40)，同色系深色標示
+      另補上匿名參與者(10)與未公開用戶名帳號(10)，使總數對齊184 */
+new Chart(document.getElementById('chartNaming'), {
+  type:'doughnut',
+  data:{
+    labels:['90%up大陸拼音','其餘姓名拼音/中文姓名','英文名','無意義字串或其他','未公開用戶名帳號','匿名參與者'],
+    datasets:[{
+      data:[40, 45, 55, 24, 10, 10],
+      backgroundColor:['#4c1d95','#a855f7','#2dd4bf','#64748b','#475569','#2a3648'],
+      hoverBackgroundColor:['#7c3aed','#c084fc','#5eead4','#94a3b8','#64748b','#3f4e68'],
+      borderWidth:2,
+      borderColor:'#111827',
+      hoverBorderColor:'#ffffff',
+      hoverBorderWidth:3,
+      hoverOffset:16
+    }]
+  },
+  options:{
+    responsive:true, maintainAspectRatio:false, cutout:'68%',
+    interaction:{mode:'nearest', intersect:true},
+    onHover:(e)=>{ e.native.target.style.cursor='pointer'; },
+    plugins:{
+      centerText:{enabled:true, label:'總互動數'},
+      legend:{position:'bottom', labels:{color:'#ffffff', padding:12, font:{size:11,weight:600}, boxWidth:12, boxHeight:12}},
+      tooltip:{...tooltipBase, callbacks:{label:(ctx)=> ' '+ctx.label+'：'+ctx.parsed+' 人'}},
+      datalabels:{color:['#ffffff','#0a0e17','#0a0e17','#0a0e17','#ffffff','#ffffff'], font:{weight:900,size:13}, formatter:(v)=> v>=5 ? v : ''}
+    }
+  }
+});
+
+/* 3. Timeline bar chart */
+const barColors = ['#3d4c66','#3d4c66','#3d4c66','#3d4c66','#3d4c66','#ff2a6d','#ff2a6d','#3d4c66','#3d4c66'];
+const barHoverColors = ['#5a6c8c','#5a6c8c','#5a6c8c','#5a6c8c','#5a6c8c','#ff5c8f','#ff5c8f','#5a6c8c','#5a6c8c'];
+
+new Chart(document.getElementById('chartTimeline'), {
+  type:'bar',
+  data:{
+    labels:[
+      '7/25 22:06','7/25 22:23','7/25 22:42','7/25 23:08','7/26 00:00',
+      ['7/26 01:13','(異常空降)'],
+      ['7/26 13:11','(異常空降)'],
+      '7/27 21:21',
+      ['7/28 10:09','(最終版本)']
+    ],
+    datasets:[{
+      label:'該版本新增反應數',
+      data:[35,13,17,15,6,47,46,3,2],
+      backgroundColor:barColors,
+      hoverBackgroundColor:barHoverColors,
+      borderRadius:6,
+      borderSkipped:false,
+      maxBarThickness:64
+    }]
+  },
+  options:{
+    responsive:true, maintainAspectRatio:false,
+    interaction:{mode:'index', intersect:false},
+    onHover:(e)=>{ e.native.target.style.cursor='pointer'; },
+    plugins:{
+      legend:{display:false},
+      tooltip:{...tooltipBase, callbacks:{label:(ctx)=> ' 新增反應：'+ctx.parsed.y+' 則'}},
+      datalabels:{anchor:'end', align:'top', color:'#ffffff', font:{weight:900,size:14,family:"'Space Grotesk',sans-serif"}}
+    },
+    scales:{
+      y:{
+        max:60, beginAtZero:true,
+        title:{display:true, text:'新增反應數', color:'#00f0ff', font:{weight:700,size:12}},
+        grid:{color:'#1e2738'},
+        ticks:{color:'#8b98ad'}
+      },
+      x:{
+        grid:{display:false},
+        ticks:{color:'#9ca3af', font:{size:11,weight:600}}
+      }
+    }
+  }
+});
+
+/* KPI count-up animation */
+function animateCount(el){
+  const target = parseFloat(el.dataset.count);
+  const dur = 1100;
+  const start = performance.now();
+  function tick(now){
+    const p = Math.min(1, (now-start)/dur);
+    const eased = 1 - Math.pow(1-p, 3);
+    el.textContent = Math.round(target*eased).toLocaleString('en-US');
+    if(p<1) requestAnimationFrame(tick);
+    else el.textContent = target.toLocaleString('en-US');
+  }
+  requestAnimationFrame(tick);
+}
+document.querySelectorAll('.kpi-value[data-count]').forEach((el,i)=>{
+  setTimeout(()=>animateCount(el), 150*i);
+});
+</script>
+
+</body>
+</html>
